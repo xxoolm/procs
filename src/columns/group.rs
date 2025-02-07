@@ -1,9 +1,13 @@
 use crate::process::ProcessInfo;
 #[cfg(target_os = "windows")]
 use crate::util::format_sid;
+#[cfg(not(target_os = "windows"))]
+use crate::util::USERS_CACHE;
 use crate::{column_default, Column};
 use std::cmp;
 use std::collections::HashMap;
+#[cfg(not(target_os = "windows"))]
+use uzers::Groups;
 
 pub struct Group {
     header: String,
@@ -19,7 +23,7 @@ impl Group {
     pub fn new(header: Option<String>, abbr_sid: bool) -> Self {
         let header = header.unwrap_or_else(|| String::from("Group"));
         let unit = String::new();
-        Group {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -35,7 +39,7 @@ impl Column for Group {
     fn add(&mut self, proc: &ProcessInfo) {
         let fmt_content = if let Some(ref status) = proc.curr_status {
             let gid = status.egid;
-            if let Some(group) = users::get_group_by_gid(gid) {
+            if let Some(group) = USERS_CACHE.with(|x| x.borrow_mut().get_group_by_gid(gid)) {
                 format!("{}", group.name().to_string_lossy())
             } else {
                 format!("{gid}")
@@ -52,16 +56,16 @@ impl Column for Group {
     column_default!(String);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 impl Column for Group {
     fn add(&mut self, proc: &ProcessInfo) {
         let gid = proc.curr_task.pbsd.pbi_gid;
-        let fmt_content = if let Some(group) = users::get_group_by_gid(gid) {
-            format!("{}", group.name().to_string_lossy())
-        } else {
-            format!("{}", gid)
-        };
+        let fmt_content =
+            if let Some(group) = USERS_CACHE.with(|x| x.borrow_mut().get_group_by_gid(gid)) {
+                format!("{}", group.name().to_string_lossy())
+            } else {
+                format!("{}", gid)
+            };
         let raw_content = fmt_content.clone();
 
         self.fmt_contents.insert(proc.pid, fmt_content);
@@ -71,12 +75,11 @@ impl Column for Group {
     column_default!(String);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "windows")]
 impl Column for Group {
     fn add(&mut self, proc: &ProcessInfo) {
         let mut sid_name = &proc.groups[0];
-        let mut kind = std::u64::MAX;
+        let mut kind = u64::MAX;
         for g in &proc.groups {
             if g.sid.len() > 3 && g.sid[1] == 5 && g.sid[2] == 32 && kind > g.sid[3] {
                 sid_name = g;
@@ -89,6 +92,25 @@ impl Column for Group {
         } else {
             format_sid(&sid_name.sid, self.abbr_sid)
         };
+        let raw_content = fmt_content.clone();
+
+        self.fmt_contents.insert(proc.pid, fmt_content);
+        self.raw_contents.insert(proc.pid, raw_content);
+    }
+
+    column_default!(String);
+}
+
+#[cfg(target_os = "freebsd")]
+impl Column for Group {
+    fn add(&mut self, proc: &ProcessInfo) {
+        let gid = proc.curr_proc.info.svgid;
+        let fmt_content =
+            if let Some(group) = USERS_CACHE.with(|x| x.borrow_mut().get_group_by_gid(gid)) {
+                format!("{}", group.name().to_string_lossy())
+            } else {
+                format!("{gid}")
+            };
         let raw_content = fmt_content.clone();
 
         self.fmt_contents.insert(proc.pid, fmt_content);

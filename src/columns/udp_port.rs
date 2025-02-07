@@ -23,7 +23,7 @@ impl UdpPort {
     pub fn new(header: Option<String>) -> Self {
         let header = header.unwrap_or_else(|| String::from("UDP"));
         let unit = String::new();
-        UdpPort {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -95,7 +95,6 @@ impl Column for UdpPort {
     crate::column_default_get_width!();
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 impl Column for UdpPort {
     fn add(&mut self, proc: &ProcessInfo) {

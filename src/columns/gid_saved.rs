@@ -15,7 +15,7 @@ impl GidSaved {
     pub fn new(header: Option<String>) -> Self {
         let header = header.unwrap_or_else(|| String::from("SGID"));
         let unit = String::new();
-        GidSaved {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -42,11 +42,24 @@ impl Column for GidSaved {
     column_default!(u32);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 impl Column for GidSaved {
     fn add(&mut self, proc: &ProcessInfo) {
         let gid = proc.curr_task.pbsd.pbi_svgid;
+        let fmt_content = format!("{}", gid);
+        let raw_content = gid;
+
+        self.fmt_contents.insert(proc.pid, fmt_content);
+        self.raw_contents.insert(proc.pid, raw_content);
+    }
+
+    column_default!(u32);
+}
+
+#[cfg(target_os = "freebsd")]
+impl Column for GidSaved {
+    fn add(&mut self, proc: &ProcessInfo) {
+        let gid = proc.curr_proc.info.svgid;
         let fmt_content = format!("{}", gid);
         let raw_content = gid;
 

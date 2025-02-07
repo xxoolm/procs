@@ -1,8 +1,8 @@
 use procfs::process::{FDInfo, Io, Process, Stat, Status, TasksIter};
 use procfs::ProcError;
-#[cfg(feature = "docker")]
-use procfs::ProcessCgroup;
+use procfs::ProcessCGroup;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -33,10 +33,9 @@ impl ProcessTask {
         }
     }
 
-    #[cfg(feature = "docker")]
-    pub fn cgroups(&self) -> Result<Vec<ProcessCgroup>, ProcError> {
+    pub fn cgroups(&self) -> Result<Vec<ProcessCGroup>, ProcError> {
         match self {
-            ProcessTask::Process { proc: x, .. } => x.cgroups(),
+            ProcessTask::Process { proc: x, .. } => x.cgroups().map(|x| x.0),
             _ => Err(ProcError::Other("not supported".to_string())),
         }
     }
@@ -81,12 +80,23 @@ pub struct ProcessInfo {
     pub interval: Duration,
 }
 
-pub fn collect_proc(interval: Duration, with_thread: bool) -> Vec<ProcessInfo> {
+pub fn collect_proc(
+    interval: Duration,
+    with_thread: bool,
+    show_kthreads: bool,
+    procfs_path: &Option<PathBuf>,
+) -> Vec<ProcessInfo> {
     let mut base_procs = Vec::new();
     let mut base_tasks = HashMap::new();
     let mut ret = Vec::new();
 
-    if let Ok(all_proc) = procfs::process::all_processes() {
+    let all_proc = if let Some(ref x) = procfs_path {
+        procfs::process::all_processes_with_root(x)
+    } else {
+        procfs::process::all_processes()
+    };
+
+    if let Ok(all_proc) = all_proc {
         for proc in all_proc.flatten() {
             if let Ok(stat) = proc.stat() {
                 let io = proc.io().ok();
@@ -104,7 +114,7 @@ pub fn collect_proc(interval: Duration, with_thread: bool) -> Vec<ProcessInfo> {
     thread::sleep(interval);
 
     for (pid, prev_stat, prev_io, prev_time) in base_procs {
-        let curr_proc = if let Ok(proc) = Process::new(pid) {
+        let curr_proc = if let Ok(proc) = crate::util::process_new(pid, procfs_path) {
             proc
         } else {
             continue;
@@ -127,6 +137,10 @@ pub fn collect_proc(interval: Duration, with_thread: bool) -> Vec<ProcessInfo> {
         let curr_time = Instant::now();
         let interval = curr_time - prev_time;
         let ppid = curr_stat.ppid;
+
+        if !show_kthreads && (ppid == 2 || pid == 2) {
+            continue;
+        }
 
         let mut curr_tasks = HashMap::new();
         if with_thread {

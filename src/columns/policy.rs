@@ -15,7 +15,7 @@ impl Policy {
     pub fn new(header: Option<String>) -> Self {
         let header = header.unwrap_or_else(|| String::from("Policy"));
         let unit = String::new();
-        Policy {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -66,7 +66,6 @@ impl Column for Policy {
     column_default!(String);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 impl Column for Policy {
     fn add(&mut self, proc: &ProcessInfo) {

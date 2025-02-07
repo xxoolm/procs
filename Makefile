@@ -24,6 +24,10 @@ release_lnx:
 	cargo build --locked --release --target=x86_64-unknown-linux-musl
 	zip -j ${BIN_NAME}-v${VERSION}-x86_64-linux.zip target/x86_64-unknown-linux-musl/release/${BIN_NAME}
 
+release_lnx_aarch64:
+	cargo build --locked --release --target=aarch64-unknown-linux-musl
+	zip -j ${BIN_NAME}-v${VERSION}-aarch64-linux.zip target/aarch64-unknown-linux-musl/release/${BIN_NAME}
+
 release_win:
 	cargo build --locked --release --target=x86_64-pc-windows-msvc
 	mv -v target/x86_64-pc-windows-msvc/release/${BIN_NAME}.exe ./
@@ -31,7 +35,9 @@ release_win:
 
 release_mac:
 	cargo build --locked --release --target=x86_64-apple-darwin
+	cargo build --locked --release --target=aarch64-apple-darwin
 	zip -j ${BIN_NAME}-v${VERSION}-x86_64-mac.zip target/x86_64-apple-darwin/release/${BIN_NAME}
+	zip -j ${BIN_NAME}-v${VERSION}-aarch64-mac.zip target/aarch64-apple-darwin/release/${BIN_NAME}
 
 release_rpm:
 	mkdir -p target

@@ -23,7 +23,6 @@ enum Command {
 
 pub struct Watcher;
 
-#[cfg_attr(tarpaulin, skip)]
 impl Watcher {
     fn spawn_cmd(tx: Sender<Command>) {
         let _ = thread::spawn(move || {
@@ -68,7 +67,7 @@ impl Watcher {
         });
     }
 
-    fn display_header(term_info: &mut TermInfo, opt: &Opt, interval: u64) -> Result<(), Error> {
+    fn display_header(term_info: &TermInfo, opt: &Opt, interval: u64) -> Result<usize, Error> {
         let header = if opt.tree {
             format!(
                 " Interval: {}ms, Last Updated: {} ( Quit: q or Ctrl-C )",
@@ -82,13 +81,14 @@ impl Watcher {
                 Local::now().format("%Y/%m/%d %H:%M:%S"),
             )
         };
+        let result = header.len();
         term_info.write_line(&format!(
             "{}",
             console::style(header).white().bold().underlined()
         ))?;
 
         term_info.write_line("")?;
-        Ok(())
+        Ok(result.div_ceil(term_info.width))
     }
 
     pub fn start(opt: &mut Opt, config: &Config, interval: u64) -> Result<(), Error> {
@@ -100,7 +100,7 @@ impl Watcher {
         let (tx_sleep, rx_sleep) = channel();
         Watcher::spawn_sleep(rx_sleep, tx_cmd, interval);
 
-        let term_info = TermInfo::new(false, false);
+        let term_info = TermInfo::new(false, false)?;
         term_info.clear_screen()?;
 
         let mut sort_idx = None;
@@ -117,18 +117,18 @@ impl Watcher {
                 view.sort_info.order = sort_order.clone().unwrap_or(view.sort_info.order);
             }
 
-            view.filter(opt, config);
-            view.adjust(config, &min_widths);
-            for (i, c) in view.columns.iter().enumerate() {
-                min_widths.insert(i, c.column.get_width());
-            }
-
             let resized = prev_term_width != view.term_info.width
                 || prev_term_height != view.term_info.height;
             if resized {
                 term_info.clear_screen()?;
             }
-            Watcher::display_header(&mut view.term_info, opt, interval)?;
+            let header_lines = Watcher::display_header(&view.term_info, opt, interval)?;
+
+            view.filter(opt, config, header_lines);
+            view.adjust(config, &min_widths);
+            for (i, c) in view.columns.iter().enumerate() {
+                min_widths.insert(i, c.column.get_width());
+            }
 
             view.display(opt, config, &theme)?;
 

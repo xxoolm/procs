@@ -1,28 +1,17 @@
 use crate::column::Column;
 use crate::columns::{ConfigColumnKind, KIND_LIST};
 use crate::config::{Config, ConfigColumnAlign, ConfigSearchCase, ConfigSearchLogic, ConfigTheme};
+use crate::opt::ArgThemeMode;
 use crate::Opt;
-use atty::Stream;
-use byte_unit::Byte;
-use clap::ValueEnum;
+use byte_unit::{Byte, UnitType};
 use std::borrow::Cow;
+use std::io;
+use std::io::IsTerminal;
 use std::time::Duration;
 use std::time::Instant;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
-
-#[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ArgColorMode {
-    Auto,
-    Always,
-    Disable,
-}
-
-#[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ArgThemeMode {
-    Auto,
-    Dark,
-    Light,
-}
+#[cfg(not(target_os = "windows"))]
+use uzers::UsersCache;
 
 impl From<ArgThemeMode> for ConfigTheme {
     fn from(item: ArgThemeMode) -> Self {
@@ -32,13 +21,6 @@ impl From<ArgThemeMode> for ConfigTheme {
             ArgThemeMode::Light => ConfigTheme::Light,
         }
     }
-}
-
-#[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ArgPagerMode {
-    Auto,
-    Always,
-    Disable,
 }
 
 pub enum KeywordClass {
@@ -206,11 +188,7 @@ pub fn truncate(s: &'_ str, width: usize) -> Cow<'_, str> {
             buf.push(c);
             continue;
         }
-        total_width += if let Some(x) = UnicodeWidthChar::width(c) {
-            x
-        } else {
-            0
-        };
+        total_width += UnicodeWidthChar::width(c).unwrap_or_default();
         if total_width > width {
             ret = Some(buf);
             break;
@@ -225,6 +203,13 @@ pub fn truncate(s: &'_ str, width: usize) -> Cow<'_, str> {
 }
 
 pub fn find_column_kind(pat: &str) -> Option<ConfigColumnKind> {
+    // strict search at first
+    for (k, (v, _)) in KIND_LIST.iter() {
+        if v.to_lowercase().eq(&pat.to_lowercase()) {
+            return Some(k.clone());
+        }
+    }
+
     for (k, (v, _)) in KIND_LIST.iter() {
         if v.to_lowercase().contains(&pat.to_lowercase()) {
             return Some(k.clone());
@@ -234,7 +219,6 @@ pub fn find_column_kind(pat: &str) -> Option<ConfigColumnKind> {
     None
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 pub fn change_endian(val: u32) -> u32 {
     let mut ret = 0;
@@ -245,7 +229,6 @@ pub fn change_endian(val: u32) -> u32 {
     ret
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 pub unsafe fn get_sys_value(
     high: u32,
@@ -266,7 +249,6 @@ pub unsafe fn get_sys_value(
     ) == 0
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "windows")]
 pub fn format_sid(sid: &[u64], abbr: bool) -> String {
     let mut ret = format!("S-{}-{}-{}", sid[0], sid[1], sid[2]);
@@ -284,9 +266,9 @@ pub fn format_sid(sid: &[u64], abbr: bool) -> String {
 }
 
 pub fn bytify(x: u64) -> String {
-    let byte = Byte::from_bytes(x as u128);
-    let byte = byte.get_appropriate_unit(true);
-    byte.format(3).replace([' ', 'B', 'i'], "")
+    let byte = Byte::from_u64(x);
+    let byte = byte.get_appropriate_unit(UnitType::Binary);
+    format!("{:.3}", byte).replace([' ', 'B', 'i'], "")
 }
 
 pub fn lap(instant: &mut Instant, msg: &str) {
@@ -307,7 +289,8 @@ pub fn get_theme(opt: &Opt, config: &Config) -> ConfigTheme {
     };
     match theme {
         ConfigTheme::Auto => {
-            if atty::is(Stream::Stdout) && atty::is(Stream::Stderr) && atty::is(Stream::Stdin) {
+            if io::stdout().is_terminal() && io::stderr().is_terminal() && io::stdin().is_terminal()
+            {
                 let minimum_timeout = Duration::from_millis(100);
                 let timeout = if let Ok(latency) = termbg::latency(Duration::from_millis(1000)) {
                     if latency * 2 > minimum_timeout {
@@ -335,5 +318,35 @@ pub fn get_theme(opt: &Opt, config: &Config) -> ConfigTheme {
             }
         }
         x => x,
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+thread_local! {
+    pub static USERS_CACHE: std::cell::RefCell<UsersCache> = UsersCache::new().into();
+}
+
+#[cfg(target_os = "freebsd")]
+// std::ffi::FromBytesUntilNulError is missing until Rust 1.73.0
+// https://github.com/rust-lang/rust/pull/113701
+pub fn ptr_to_cstr(
+    x: &[std::os::raw::c_char],
+) -> Result<&std::ffi::CStr, core::ffi::FromBytesUntilNulError> {
+    let ptr = x.as_ptr() as *const u8;
+    let len = x.len();
+    let x = unsafe { std::slice::from_raw_parts::<u8>(ptr, len) };
+    std::ffi::CStr::from_bytes_until_nul(x)
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub fn process_new(
+    pid: i32,
+    procfs: &Option<std::path::PathBuf>,
+) -> procfs::ProcResult<procfs::process::Process> {
+    if let Some(ref x) = procfs {
+        let path = x.join(pid.to_string());
+        procfs::process::Process::new_with_root(path)
+    } else {
+        procfs::process::Process::new(pid)
     }
 }

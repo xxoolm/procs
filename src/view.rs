@@ -1,13 +1,11 @@
 use crate::column::Column;
 use crate::columns::*;
 use crate::config::*;
+use crate::opt::{ArgColorMode, ArgPagerMode};
 use crate::process::collect_proc;
 use crate::style::{apply_color, apply_style, color_to_column_style};
 use crate::term_info::TermInfo;
-use crate::util::{
-    classify, find_column_kind, find_exact, find_partial, truncate, ArgColorMode, ArgPagerMode,
-    KeywordClass,
-};
+use crate::util::{classify, find_column_kind, find_exact, find_partial, truncate, KeywordClass};
 use crate::Opt;
 use anyhow::{bail, Error};
 #[cfg(not(target_os = "windows"))]
@@ -114,7 +112,7 @@ impl View {
             };
 
             for kind in kinds {
-                let visible = if let Some(ref only) = opt.only {
+                let visible = if let Some(only) = &opt.only {
                     let kind_name = KIND_LIST[&kind].0.to_lowercase();
                     if !kind_name.contains(&only.to_lowercase()) {
                         false
@@ -133,6 +131,7 @@ impl View {
                     &config.display.separator,
                     config.display.abbr_sid,
                     &config.display.tree_symbols,
+                    opt.procfs.clone(),
                 );
                 if column.available() {
                     columns.push(ColumnInfo {
@@ -154,7 +153,7 @@ impl View {
             bail!("There is not enough slot for inserting columns {:?}.\nPlease add \"Slot\" or \"MultiSlot\" to your config.\nhttps://github.com/dalance/procs#insert-column", opt.insert);
         }
 
-        if let Some(ref only_kind) = opt.only {
+        if let Some(only_kind) = &opt.only {
             if !only_kind_found {
                 bail!("kind \"{}\" is not found in columns", only_kind);
             }
@@ -168,7 +167,12 @@ impl View {
             config.display.show_thread
         };
 
-        let proc = collect_proc(Duration::from_millis(opt.interval), show_thread);
+        let proc = collect_proc(
+            Duration::from_millis(opt.interval),
+            show_thread,
+            config.display.show_kthreads,
+            &opt.procfs,
+        );
         for c in columns.iter_mut() {
             for p in &proc {
                 c.column.add(p);
@@ -177,7 +181,7 @@ impl View {
 
         let mut parent_pids = HashMap::new();
         let mut child_pids = HashMap::<i32, Vec<i32>>::new();
-        if opt.tree {
+        if opt.tree || !config.display.show_self_parents {
             for p in &proc {
                 parent_pids.insert(p.pid, p.ppid);
                 if let Some(x) = child_pids.get_mut(&p.ppid) {
@@ -188,7 +192,7 @@ impl View {
             }
         }
 
-        let term_info = TermInfo::new(clear_by_line, false);
+        let term_info = TermInfo::new(clear_by_line, false)?;
         let mut sort_info = View::get_sort_info(opt, config, &columns);
 
         if opt.only.is_some() {
@@ -206,7 +210,7 @@ impl View {
         })
     }
 
-    pub fn filter(&mut self, opt: &Opt, config: &Config) {
+    pub fn filter(&mut self, opt: &Opt, config: &Config, header_lines: usize) {
         let mut cols_nonnumeric = Vec::new();
         let mut cols_numeric = Vec::new();
         for c in &self.columns {
@@ -234,6 +238,23 @@ impl View {
 
         let self_pid = std::process::id() as i32;
 
+        let self_parents = if !config.display.show_self_parents {
+            let mut self_parents = Vec::new();
+            self.get_parent_pids(self_pid, &mut self_parents);
+            self_parents
+                .into_iter()
+                .filter(|x| {
+                    if let Some(x) = self.child_pids.get(x) {
+                        x.len() == 1
+                    } else {
+                        false
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         let logic = if opt.and {
             ConfigSearchLogic::And
         } else if opt.or {
@@ -248,7 +269,10 @@ impl View {
 
         let mut candidate_pids = Vec::new();
         for pid in &pids {
-            let candidate = if !config.display.show_self && *pid == self_pid {
+            let hidden_process = (!config.display.show_self && *pid == self_pid)
+                || (!config.display.show_self_parents && self_parents.contains(pid));
+
+            let candidate = if hidden_process {
                 false
             } else if opt.keyword.is_empty() {
                 true
@@ -297,7 +321,8 @@ impl View {
                 visible_pids.push(*pid);
             }
 
-            if opt.watch_mode && visible_pids.len() >= self.term_info.height - 5 {
+            let reserved_rows = 4 + header_lines;
+            if opt.watch_mode && visible_pids.len() >= self.term_info.height - reserved_rows {
                 break;
             }
         }
@@ -362,7 +387,7 @@ impl View {
                 + self.columns.len()
                 - 1
         } else {
-            std::usize::MIN
+            usize::MIN
         };
 
         let use_builtin_pager = if cfg!(target_os = "windows") {
@@ -400,7 +425,7 @@ impl View {
         truncate |= !use_terminal && config.display.cut_to_pipe;
 
         if !truncate {
-            self.term_info.width = std::usize::MAX;
+            self.term_info.width = usize::MAX;
         }
 
         match (opt.color.as_ref(), &config.display.color_mode) {
@@ -644,7 +669,6 @@ impl View {
     #[cfg(target_os = "windows")]
     fn pager(_config: &Config) {}
 
-    #[cfg_attr(tarpaulin, skip)]
     pub fn inc_sort_column(&mut self) -> usize {
         let current = self.sort_info.idx;
         let max_idx = self.columns.len();
@@ -658,7 +682,6 @@ impl View {
         current
     }
 
-    #[cfg_attr(tarpaulin, skip)]
     pub fn dec_sort_column(&mut self) -> usize {
         let current = self.sort_info.idx;
         let max_idx = self.columns.len();

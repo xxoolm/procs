@@ -15,7 +15,7 @@ impl MajFlt {
     pub fn new(header: Option<String>) -> Self {
         let header = header.unwrap_or_else(|| String::from("MajorFaults"));
         let unit = String::new();
-        MajFlt {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -38,12 +38,11 @@ impl Column for MajFlt {
     column_default!(u64);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 impl Column for MajFlt {
     fn add(&mut self, proc: &ProcessInfo) {
         let raw_content = proc.curr_task.ptinfo.pti_pageins as u64;
-        let fmt_content = format!("{}", raw_content);
+        let fmt_content = format!("{raw_content}");
 
         self.fmt_contents.insert(proc.pid, fmt_content);
         self.raw_contents.insert(proc.pid, raw_content);
@@ -52,12 +51,24 @@ impl Column for MajFlt {
     column_default!(u64);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "windows")]
 impl Column for MajFlt {
     fn add(&mut self, proc: &ProcessInfo) {
         let raw_content = proc.memory_info.page_fault_count;
-        let fmt_content = format!("{}", raw_content);
+        let fmt_content = format!("{raw_content}");
+
+        self.fmt_contents.insert(proc.pid, fmt_content);
+        self.raw_contents.insert(proc.pid, raw_content);
+    }
+
+    column_default!(u64);
+}
+
+#[cfg(target_os = "freebsd")]
+impl Column for MajFlt {
+    fn add(&mut self, proc: &ProcessInfo) {
+        let raw_content = proc.curr_proc.info.rusage.majflt as u64;
+        let fmt_content = format!("{raw_content}");
 
         self.fmt_contents.insert(proc.pid, fmt_content);
         self.raw_contents.insert(proc.pid, raw_content);

@@ -1,30 +1,29 @@
 use chrono::offset::TimeZone;
 use chrono::{Local, NaiveDate};
-use libc::c_void;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ffi::c_void;
 use std::mem::{size_of, zeroed, MaybeUninit};
+use std::path::PathBuf;
 use std::ptr;
 use std::thread;
 use std::time::{Duration, Instant};
-use winapi::shared::minwindef::{DWORD, FALSE, FILETIME, MAX_PATH};
-use winapi::um::handleapi::CloseHandle;
-use winapi::um::processthreadsapi::{
-    GetCurrentProcess, GetPriorityClass, GetProcessTimes, OpenProcess, OpenProcessToken,
+use windows_sys::Win32::Foundation::{CloseHandle, FALSE, FILETIME, HANDLE, HMODULE, MAX_PATH};
+use windows_sys::Win32::Security::{
+    AdjustTokenPrivileges, GetTokenInformation, LookupAccountSidW, LookupPrivilegeValueW,
+    TokenGroups, TokenUser, PSID, SE_DEBUG_NAME, SE_PRIVILEGE_ENABLED, SID,
+    TOKEN_ADJUST_PRIVILEGES, TOKEN_GROUPS, TOKEN_PRIVILEGES, TOKEN_QUERY, TOKEN_USER,
 };
-use winapi::um::psapi::{
+use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
+};
+use windows_sys::Win32::System::ProcessStatus::{
     EnumProcessModulesEx, GetModuleBaseNameW, GetProcessMemoryInfo, K32EnumProcesses,
     LIST_MODULES_ALL, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
 };
-use winapi::um::securitybaseapi::{AdjustTokenPrivileges, GetTokenInformation};
-use winapi::um::tlhelp32::{
-    CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
-};
-use winapi::um::winbase::{GetProcessIoCounters, LookupAccountSidW, LookupPrivilegeValueW};
-use winapi::um::winnt::{
-    TokenGroups, TokenUser, HANDLE, IO_COUNTERS, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ, PSID,
-    SE_DEBUG_NAME, SE_PRIVILEGE_ENABLED, SID, TOKEN_ADJUST_PRIVILEGES, TOKEN_GROUPS,
-    TOKEN_PRIVILEGES, TOKEN_QUERY, TOKEN_USER,
+use windows_sys::Win32::System::Threading::{
+    GetCurrentProcess, GetPriorityClass, GetProcessIoCounters, GetProcessTimes, OpenProcess,
+    OpenProcessToken, IO_COUNTERS, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
 };
 
 pub struct ProcessInfo {
@@ -46,10 +45,13 @@ pub struct MemoryInfo {
     pub page_fault_count: u64,
     pub peak_working_set_size: u64,
     pub working_set_size: u64,
+    #[allow(dead_code)]
     pub quota_peak_paged_pool_usage: u64,
     pub quota_paged_pool_usage: u64,
+    #[allow(dead_code)]
     pub quota_peak_non_paged_pool_usage: u64,
     pub quota_non_paged_pool_usage: u64,
+    #[allow(dead_code)]
     pub page_file_usage: u64,
     pub peak_page_file_usage: u64,
     pub private_usage: u64,
@@ -69,8 +71,12 @@ pub struct CpuInfo {
     pub curr_user: u64,
 }
 
-#[cfg_attr(tarpaulin, skip)]
-pub fn collect_proc(interval: Duration, _with_thread: bool) -> Vec<ProcessInfo> {
+pub fn collect_proc(
+    interval: Duration,
+    _with_thread: bool,
+    _show_kthreads: bool,
+    _procfs_path: &Option<PathBuf>,
+) -> Vec<ProcessInfo> {
     let mut base_procs = Vec::new();
     let mut ret = Vec::new();
 
@@ -108,7 +114,7 @@ pub fn collect_proc(interval: Duration, _with_thread: bool) -> Vec<ProcessInfo> 
 
             let start_time = if let Some((start, _, _, _)) = times {
                 let time = chrono::Duration::seconds(start as i64 / 10_000_000);
-                let base = NaiveDate::from_ymd_opt(1600, 1, 1)
+                let base = NaiveDate::from_ymd_opt(1601, 1, 1)
                     .and_then(|ndate| ndate.and_hms_opt(0, 0, 0))
                     .unwrap();
                 let time = base + time;
@@ -196,7 +202,6 @@ pub fn collect_proc(interval: Duration, _with_thread: bool) -> Vec<ProcessInfo> 
     ret
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn set_privilege() -> bool {
     let handle = unsafe { GetCurrentProcess() };
     let mut token: HANDLE = unsafe { zeroed() };
@@ -206,7 +211,9 @@ fn set_privilege() -> bool {
     }
 
     let mut tps: TOKEN_PRIVILEGES = unsafe { zeroed() };
-    let se_debug_name: Vec<u16> = format!("{}\0", SE_DEBUG_NAME).encode_utf16().collect();
+    let se_debug_name: Vec<u16> = format!("{}\0", unsafe { *SE_DEBUG_NAME })
+        .encode_utf16()
+        .collect();
     tps.PrivilegeCount = 1;
     let ret = unsafe {
         LookupPrivilegeValueW(
@@ -224,7 +231,7 @@ fn set_privilege() -> bool {
         AdjustTokenPrivileges(
             token,
             FALSE,
-            &mut tps,
+            &tps as *const _,
             0,
             ptr::null::<TOKEN_PRIVILEGES>() as *mut TOKEN_PRIVILEGES,
             ptr::null::<u32>() as *mut u32,
@@ -237,30 +244,28 @@ fn set_privilege() -> bool {
     true
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_pids() -> Vec<i32> {
-    let dword_size = size_of::<DWORD>();
-    let mut pids: Vec<DWORD> = Vec::with_capacity(10192);
+    let dword_size = size_of::<u32>();
+    let mut pids = Vec::with_capacity(10192);
     let mut cb_needed = 0;
 
     unsafe { pids.set_len(10192) };
     let result = unsafe {
         K32EnumProcesses(
             pids.as_mut_ptr(),
-            (dword_size * pids.len()) as DWORD,
+            (dword_size * pids.len()) as u32,
             &mut cb_needed,
         )
     };
     if result == 0 {
         return Vec::new();
     }
-    let pids_len = cb_needed / dword_size as DWORD;
+    let pids_len = cb_needed / dword_size as u32;
     unsafe { pids.set_len(pids_len as usize) };
 
     pids.iter().map(|x| *x as i32).collect()
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_ppid_threads() -> (HashMap<i32, i32>, HashMap<i32, i32>) {
     let mut ppids = HashMap::new();
     let mut threads = HashMap::new();
@@ -281,7 +286,6 @@ fn get_ppid_threads() -> (HashMap<i32, i32>, HashMap<i32, i32>) {
     (ppids, threads)
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_handle(pid: i32) -> Option<HANDLE> {
     if pid == 0 {
         return None;
@@ -291,18 +295,17 @@ fn get_handle(pid: i32) -> Option<HANDLE> {
         OpenProcess(
             PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
             FALSE,
-            pid as DWORD,
+            pid as u32,
         )
     };
 
-    if handle.is_null() {
+    if handle == std::ptr::null_mut() {
         None
     } else {
         Some(handle)
     }
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_times(handle: HANDLE) -> Option<(u64, u64, u64, u64)> {
     let mut start: FILETIME = unsafe { zeroed() };
     let mut exit: FILETIME = unsafe { zeroed() };
@@ -331,7 +334,6 @@ fn get_times(handle: HANDLE) -> Option<(u64, u64, u64, u64)> {
     }
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_memory_info(handle: HANDLE) -> Option<MemoryInfo> {
     let mut pmc: PROCESS_MEMORY_COUNTERS_EX = unsafe { zeroed() };
     let ret = unsafe {
@@ -339,7 +341,7 @@ fn get_memory_info(handle: HANDLE) -> Option<MemoryInfo> {
             handle,
             &mut pmc as *mut PROCESS_MEMORY_COUNTERS_EX as *mut c_void
                 as *mut PROCESS_MEMORY_COUNTERS,
-            size_of::<PROCESS_MEMORY_COUNTERS_EX>() as DWORD,
+            size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
         )
     };
 
@@ -362,17 +364,16 @@ fn get_memory_info(handle: HANDLE) -> Option<MemoryInfo> {
     }
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_command(handle: HANDLE) -> Option<String> {
-    let mut exe_buf = [0u16; MAX_PATH + 1];
-    let mut h_mod = std::ptr::null_mut();
+    let mut exe_buf = [0u16; MAX_PATH as usize + 1];
+    let h_mod: HMODULE = std::ptr::null_mut();
     let mut cb_needed = 0;
 
     let ret = unsafe {
         EnumProcessModulesEx(
             handle,
-            &mut h_mod,
-            size_of::<DWORD>() as DWORD,
+            h_mod as *mut HMODULE,
+            size_of::<u32>() as u32,
             &mut cb_needed,
             LIST_MODULES_ALL,
         )
@@ -381,8 +382,7 @@ fn get_command(handle: HANDLE) -> Option<String> {
         return None;
     }
 
-    let ret =
-        unsafe { GetModuleBaseNameW(handle, h_mod, exe_buf.as_mut_ptr(), MAX_PATH as DWORD + 1) };
+    let ret = unsafe { GetModuleBaseNameW(handle, h_mod, exe_buf.as_mut_ptr(), MAX_PATH + 1) };
 
     let mut pos = 0;
     for x in exe_buf.iter() {
@@ -399,7 +399,6 @@ fn get_command(handle: HANDLE) -> Option<String> {
     }
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_io(handle: HANDLE) -> Option<(u64, u64)> {
     let mut io: IO_COUNTERS = unsafe { zeroed() };
     let ret = unsafe { GetProcessIoCounters(handle, &mut io) };
@@ -414,10 +413,10 @@ fn get_io(handle: HANDLE) -> Option<(u64, u64)> {
 pub struct SidName {
     pub sid: Vec<u64>,
     pub name: Option<String>,
+    #[allow(dead_code)]
     pub domainname: Option<String>,
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_user(handle: HANDLE) -> Option<SidName> {
     let mut token: HANDLE = unsafe { zeroed() };
     let ret = unsafe { OpenProcessToken(handle, TOKEN_QUERY, &mut token) };
@@ -474,7 +473,6 @@ fn get_user(handle: HANDLE) -> Option<SidName> {
     })
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_groups(handle: HANDLE) -> Option<Vec<SidName>> {
     unsafe {
         let mut token: HANDLE = zeroed();
@@ -534,7 +532,6 @@ fn get_groups(handle: HANDLE) -> Option<Vec<SidName>> {
     }
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_sid(psid: PSID) -> Vec<u64> {
     let mut ret = Vec::new();
     let psid = psid as *const SID;
@@ -564,7 +561,6 @@ thread_local!(
         RefCell::new(HashMap::new());
 );
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_name_cached(psid: PSID) -> Option<(String, String)> {
     NAME_CACHE.with(|c| {
         let mut c = c.borrow_mut();
@@ -578,7 +574,6 @@ fn get_name_cached(psid: PSID) -> Option<(String, String)> {
     })
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_name(psid: PSID) -> Option<(String, String)> {
     let mut cc_name = 0;
     let mut cc_domainname = 0;
@@ -605,9 +600,9 @@ fn get_name(psid: PSID) -> Option<(String, String)> {
         let ret = LookupAccountSidW(
             ptr::null::<u16>() as *mut u16,
             psid,
-            name.as_mut_ptr() as *mut u16,
+            name.as_mut_ptr(),
             &mut cc_name,
-            domainname.as_mut_ptr() as *mut u16,
+            domainname.as_mut_ptr(),
             &mut cc_domainname,
             &mut pe_use,
         );
@@ -622,20 +617,18 @@ fn get_name(psid: PSID) -> Option<(String, String)> {
     }
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn from_wide_ptr(ptr: *const u16) -> String {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
 
     assert!(!ptr.is_null());
-    let len = (0..std::isize::MAX)
+    let len = (0..isize::MAX)
         .position(|i| unsafe { *ptr.offset(i) == 0 })
         .unwrap();
     let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
     OsString::from_wide(slice).to_string_lossy().into_owned()
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_priority(handle: HANDLE) -> u32 {
     unsafe { GetPriorityClass(handle) }
 }

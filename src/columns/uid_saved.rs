@@ -15,7 +15,7 @@ impl UidSaved {
     pub fn new(header: Option<String>) -> Self {
         let header = header.unwrap_or_else(|| String::from("SUID"));
         let unit = String::new();
-        UidSaved {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -42,11 +42,24 @@ impl Column for UidSaved {
     column_default!(u32);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 impl Column for UidSaved {
     fn add(&mut self, proc: &ProcessInfo) {
         let uid = proc.curr_task.pbsd.pbi_svuid;
+        let fmt_content = format!("{}", uid);
+        let raw_content = uid;
+
+        self.fmt_contents.insert(proc.pid, fmt_content);
+        self.raw_contents.insert(proc.pid, raw_content);
+    }
+
+    column_default!(u32);
+}
+
+#[cfg(target_os = "freebsd")]
+impl Column for UidSaved {
+    fn add(&mut self, proc: &ProcessInfo) {
+        let uid = proc.curr_proc.info.svuid;
         let fmt_content = format!("{}", uid);
         let raw_content = uid;
 

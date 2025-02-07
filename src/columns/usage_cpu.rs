@@ -15,7 +15,7 @@ impl UsageCpu {
     pub fn new(header: Option<String>) -> Self {
         let header = header.unwrap_or_else(|| String::from("CPU"));
         let unit = String::from("[%]");
-        UsageCpu {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -47,7 +47,6 @@ impl Column for UsageCpu {
     column_default!(u32);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 impl Column for UsageCpu {
     fn add(&mut self, proc: &ProcessInfo) {
@@ -69,7 +68,6 @@ impl Column for UsageCpu {
     column_default!(u32);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "windows")]
 impl Column for UsageCpu {
     fn add(&mut self, proc: &ProcessInfo) {
@@ -77,6 +75,27 @@ impl Column for UsageCpu {
         let prev_time = proc.cpu_info.prev_sys + proc.cpu_info.prev_user;
 
         let usage_ms = (curr_time - prev_time) / 10000u64;
+        let interval_ms = proc.interval.as_secs() * 1000 + u64::from(proc.interval.subsec_millis());
+        let usage = usage_ms as f64 * 100.0 / interval_ms as f64;
+
+        let fmt_content = format!("{:.1}", usage);
+        let raw_content = (usage * 1000.0) as u32;
+
+        self.fmt_contents.insert(proc.pid, fmt_content);
+        self.raw_contents.insert(proc.pid, raw_content);
+    }
+
+    column_default!(u32);
+}
+
+#[cfg(target_os = "freebsd")]
+impl Column for UsageCpu {
+    fn add(&mut self, proc: &ProcessInfo) {
+        let curr_time = (proc.curr_proc.info.rusage.utime.to_us()
+            + proc.curr_proc.info.rusage.stime.to_us()) as u64;
+        let prev_time = (proc.prev_proc.info.rusage.utime.to_us()
+            + proc.prev_proc.info.rusage.stime.to_us()) as u64;
+        let usage_ms = (curr_time - prev_time) / 1_000u64;
         let interval_ms = proc.interval.as_secs() * 1000 + u64::from(proc.interval.subsec_millis());
         let usage = usage_ms as f64 * 100.0 / interval_ms as f64;
 

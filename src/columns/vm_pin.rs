@@ -16,7 +16,7 @@ impl VmPin {
     pub fn new(header: Option<String>) -> Self {
         let header = header.unwrap_or_else(|| String::from("VmPin"));
         let unit = String::from("[bytes]");
-        VmPin {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -47,7 +47,6 @@ impl Column for VmPin {
     column_default!(u64);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "windows")]
 impl Column for VmPin {
     fn add(&mut self, proc: &ProcessInfo) {

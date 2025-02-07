@@ -16,7 +16,7 @@ impl VmRss {
     pub fn new(header: Option<String>) -> Self {
         let header = header.unwrap_or_else(|| String::from("VmRSS"));
         let unit = String::from("[bytes]");
-        VmRss {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -29,7 +29,8 @@ impl VmRss {
 #[cfg(any(target_os = "linux", target_os = "android"))]
 impl Column for VmRss {
     fn add(&mut self, proc: &ProcessInfo) {
-        let raw_content = proc.curr_proc.stat().rss_bytes();
+        use procfs::WithCurrentSystemInfo;
+        let raw_content = proc.curr_proc.stat().rss_bytes().get();
         let fmt_content = bytify(raw_content);
 
         self.fmt_contents.insert(proc.pid, fmt_content);
@@ -39,7 +40,6 @@ impl Column for VmRss {
     column_default!(u64);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 impl Column for VmRss {
     fn add(&mut self, proc: &ProcessInfo) {
@@ -53,11 +53,23 @@ impl Column for VmRss {
     column_default!(u64);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "windows")]
 impl Column for VmRss {
     fn add(&mut self, proc: &ProcessInfo) {
         let raw_content = proc.memory_info.working_set_size;
+        let fmt_content = bytify(raw_content);
+
+        self.fmt_contents.insert(proc.pid, fmt_content);
+        self.raw_contents.insert(proc.pid, raw_content);
+    }
+
+    column_default!(u64);
+}
+
+#[cfg(target_os = "freebsd")]
+impl Column for VmRss {
+    fn add(&mut self, proc: &ProcessInfo) {
+        let raw_content = (proc.curr_proc.info.rssize as u64).saturating_mul(4096);
         let fmt_content = bytify(raw_content);
 
         self.fmt_contents.insert(proc.pid, fmt_content);

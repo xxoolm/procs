@@ -3,9 +3,8 @@
 **procs** is a replacement for `ps` written in [Rust](https://www.rust-lang.org/).
 
 [![Actions Status](https://github.com/dalance/procs/workflows/Regression/badge.svg)](https://github.com/dalance/procs/actions)
-[![codecov](https://codecov.io/gh/dalance/procs/branch/master/graph/badge.svg)](https://codecov.io/gh/dalance/procs)
 
-[![Changelog](https://img.shields.io/badge/changelog-v0.13.4-green.svg)](https://github.com/dalance/procs/blob/master/CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/changelog-v0.14.9-green.svg)](https://github.com/dalance/procs/blob/master/CHANGELOG.md)
 [![Crates.io](https://img.shields.io/crates/v/procs.svg)](https://crates.io/crates/procs)
 [![procs](https://snapcraft.io/procs/badge.svg)](https://snapcraft.io/procs)
 [![homebrew](https://img.shields.io/homebrew/v/procs.svg)](https://formulae.brew.sh/formula/procs)
@@ -36,9 +35,10 @@
 
 - Linux is supported.
 - macOS is experimentally supported.
-    - macOS version is checked on Travis CI environment only.
+    - macOS version is checked on GitHub Actions environment only.
     - The issues caused by real-machine are welcome.
 - Windows is supported.
+- FreeBSD is experimentally supported.
 
 ## Installation
 
@@ -46,7 +46,7 @@
 
 Download from [release page](https://github.com/dalance/procs/releases/latest), and extract to the directory in PATH.
 
-### [![Packaging status](https://repology.org/badge/vertical-allrepos/procs.svg)](https://repology.org/project/procs/versions)
+### [![Packaging status](https://repology.org/badge/vertical-allrepos/procs.svg?columns=3)](https://repology.org/project/procs/versions)
 
 ### Nixpkgs
 
@@ -92,7 +92,7 @@ sudo apk add procs
 
 ### Arch Linux
 
-You can install from the [Arch Linux community repository](https://archlinux.org/packages/community/x86_64/procs/).
+You can install from the [Arch Linux extra repository](https://archlinux.org/packages/extra/x86_64/procs/).
 
 ```
 sudo pacman -S procs
@@ -112,12 +112,18 @@ scoop install procs
 sudo dnf install procs
 ```
 
+### Windows
+
+```
+winget install procs
+```
+
 ### RPM
 
 You can install with rpm.
 
 ```
-sudo rpm -i https://github.com/dalance/procs/releases/download/v0.13.4/procs-0.13.4-1.x86_64.rpm
+sudo rpm -i https://github.com/dalance/procs/releases/download/v0.14.9/procs-0.14.9-1.x86_64.rpm
 ```
 
 ### Cargo
@@ -128,11 +134,21 @@ You can install with [cargo](https://crates.io/crates/procs).
 cargo install procs
 ```
 
+### X-CMD
+
+You can install with [x-cmd](https://www.x-cmd.com).
+
+```
+x env use procs
+# or
+x procs # Download procs, and invoke procs in a way that does not affect the current environment
+```
+
 ## Installation Notes
 
 ### Permissions issues
 
-On macOS, normal users can't access any information on other users' processes
+On macOS, normal users can't access any information on other users' processes.
 On Linux, normal users can't access some information (ex. Read/Write throughput) of other users.
 
 If you want to show this information, you should use `sudo`.
@@ -310,10 +326,10 @@ You can change configuration by writing a configuration file.
 There are some configuration examples in `config` directory of this repository.
 `config/large.toml` is the default configuration before procs v0.9.21.
 
-The location of the configuration file is OS-specific:
+The locations of the configuration file is OS-specific:
 
- * Linux: `~/.config/procs/config.toml`
- * macOS: `~/Library/Preferences/com.github.dalance.procs/config.toml`
+ * Linux: `~/.config/procs/config.toml`, `/etc/procs/procs.toml`
+ * macOS: `~/Library/Preferences/com.github.dalance.procs/config.toml`, `/etc/procs/procs.toml`
  * Windows: `~/AppData/Roaming/dalance/procs/config/config.toml`
 
 For compatibility, if `~/.procs.toml` exists, it will be preferred to
@@ -416,81 +432,83 @@ The first `[[columns]]` is shown at left side, and the last is shown at right si
 
 #### `kind` list
 
-| procs `kind` | `ps` STANDARD FORMAT  | Description                                   | Linux | macOS | Windows |
-| ------------ | --------------------- | --------------------------------------------- | ----- | ----- | ------- |
-| Command      | args                  | Command with all arguments                    | o     | o     | o       |
-| ContextSw    | -not supported-       | Context switch count                          | o     | o     |         |
-| CpuTime      | cputime               | Cumulative CPU time                           | o     | o     | o       |
-| Docker       | -not supported-       | Docker container name                         | o     | o     |         |
-| Eip          | eip                   | Instruction pointer                           | o     |       |         |
-| ElapsedTime  | -not supported-       | Elapsed time                                  | o     | o     | o       |
-| Env          | `e` output modifier   | Environment variables                         | o     |       |         |
-| Esp          | esp                   | Stack pointer                                 | o     |       |         |
-| FileName     | comm                  | File name                                     | o     |       |         |
-| Gid          | egid                  | Group ID                                      | o     | o     | o       |
-| GidFs        | fgid                  | File system group ID                          | o     |       |         |
-| GidReal      | rgid                  | Real group ID                                 | o     | o     |         |
-| GidSaved     | sgid                  | Saved group ID                                | o     | o     |         |
-| Group        | egroup                | Group name                                    | o     | o     | o       |
-| GroupFs      | fgroup                | File system group name                        | o     |       |         |
-| GroupReal    | rgroup                | Real group name                               | o     | o     |         |
-| GroupSaved   | sgroup                | Saved group name                              | o     | o     |         |
-| MajFlt       | maj_flt               | Major page fault count                        | o     | o     | o       |
-| MinFlt       | min_flt               | Minor page fault count                        | o     | o     |         |
-| MultiSlot    | -not supported-       | Slot for `--insert` option                    | o     | o     | o       |
-| Nice         | ni                    | Nice value                                    | o     | o     |         |
-| Pgid         | pgid                  | Process group ID                              | o     | o     |         |
-| Pid          | pid                   | Process ID ( or Thread ID sorrunded by `[]` ) | o     | o     | o       |
-| Policy       | policy                | Scheduling policy                             | o     | o     |         |
-| Ppid         | ppid                  | Parent process ID                             | o     | o     | o       |
-| Priority     | pri                   | Priority                                      | o     | o     | o       |
-| Processor    | psr                   | Currently assigned processor                  | o     |       |         |
-| ReadBytes    | -not supported-       | Read bytes from storage                       | o     | o     | o       |
-| RtPriority   | rtprio                | Real-time priority                            | o     |       |         |
-| SecContext   | label                 | Security context                              | o     |       |         |
-| Separator    | -not supported-       | Show `\|` for column separation               | o     | o     | o       |
-| Session      | sid                   | Session ID                                    | o     | o     |         |
-| ShdPnd       | pending               | Pending signal mask for process               | o     |       |         |
-| SigBlk       | blocked               | Blocked signal mask                           | o     |       |         |
-| SigCgt       | caught                | Caught signal mask                            | o     |       |         |
-| SigIgn       | ignored               | Ignored signal mask                           | o     |       |         |
-| SigPnd       | pending               | Pending signal mask for thread                | o     |       |         |
-| Slot         | -not supported-       | Slot for `--insert` option                    | o     | o     | o       |
-| Ssb          | -not supported-       | Speculative store bypass status               | o     |       |         |
-| StartTime    | start_time            | Starting time                                 | o     | o     | o       |
-| State        | s                     | Process state                                 | o     | o     |         |
-| TcpPort      | -not supported-       | Bound TCP ports                               | o     | o     |         |
-| Threads      | nlwp                  | Thread count                                  | o     | o     |         |
-| TreeSlot     | -not supported-       | Slot for tree column                          | o     | o     | o       |
-| Tty          | tty                   | Controlling TTY                               | o     | o     |         |
-| UdpPort      | -not supported-       | Bound UDP ports                               | o     | o     |         |
-| Uid          | euid                  | User ID                                       | o     | o     | o       |
-| UidFs        | fuid                  | File system user ID                           | o     |       |         |
-| UidLogin     | -not supported-       | Login user ID                                 | o     |       |         |
-| UidReal      | ruid                  | Real user ID                                  | o     | o     |         |
-| UidSaved     | suid                  | Saved user ID                                 | o     | o     |         |
-| UsageCpu     | %cpu                  | CPU utilization                               | o     | o     | o       |
-| UsageMem     | %mem                  | Memory utilization                            | o     | o     | o       |
-| User         | euser                 | User name                                     | o     | o     | o       |
-| UserFs       | fuser                 | File system user name                         | o     |       |         |
-| UserLogin    | -not supported-       | Login user name                               | o     |       |         |
-| UserReal     | ruser                 | Real user name                                | o     | o     |         |
-| UserSaved    | suser                 | Saved user name                               | o     | o     |         |
-| VmData       | -not supported-       | Data size                                     | o     |       |         |
-| VmExe        | trs                   | Text segments size                            | o     |       |         |
-| VmHwm        | -not supported-       | Peak resident set size                        | o     |       | o       |
-| VmLib        | -not supported-       | Library code size                             | o     |       |         |
-| VmLock       | -not supported-       | Locked memory size                            | o     |       |         |
-| VmPeak       | -not supported-       | Peak virtual memory size                      | o     |       | o       |
-| VmPin        | -not supported-       | Pinned memory size                            | o     |       | o       |
-| VmPte        | -not supported-       | Page table entries size                       | o     |       |         |
-| VmRss        | rss                   | Resident set size                             | o     | o     | o       |
-| VmSize       | vsz                   | Physical page size                            | o     | o     | o       |
-| VmStack      | -not supported-       | Stack size                                    | o     |       |         |
-| VmSwap       | -not supported-       | Swapped-out virtual memory size               | o     |       | o       |
-| Wchan        | wchan                 | Process sleeping kernel function              | o     |       |         |
-| WorkDir      | -not supported-       | Current working directory                     | o     |       |         |
-| WriteByte    | -not supported-       | Write bytes to storage                        | o     | o     | o       |
+| procs `kind` | `ps` STANDARD FORMAT  | Description                                   | Linux | macOS | Windows | FreeBSD |
+| ------------ | --------------------- | --------------------------------------------- | ----- | ----- | ------- | ------- |
+| Ccgroup      | -not supported-       | Control group by compressed format            | o     |       |         |         |
+| Cgroup       | cgroup                | Control group                                 | o     |       |         |         |
+| Command      | args                  | Command with all arguments                    | o     | o     | o       | o       |
+| ContextSw    | -not supported-       | Context switch count                          | o     | o     |         | o       |
+| CpuTime      | cputime               | Cumulative CPU time                           | o     | o     | o       | o       |
+| Docker       | -not supported-       | Docker container name                         | o     | o     |         |         |
+| Eip          | eip                   | Instruction pointer                           | o     |       |         |         |
+| ElapsedTime  | -not supported-       | Elapsed time                                  | o     | o     | o       | o       |
+| Env          | `e` output modifier   | Environment variables                         | o     |       |         | o       |
+| Esp          | esp                   | Stack pointer                                 | o     |       |         |         |
+| FileName     | comm                  | File name                                     | o     |       |         | o       |
+| Gid          | egid                  | Group ID                                      | o     | o     | o       | o       |
+| GidFs        | fgid                  | File system group ID                          | o     |       |         |         |
+| GidReal      | rgid                  | Real group ID                                 | o     | o     |         | o       |
+| GidSaved     | sgid                  | Saved group ID                                | o     | o     |         | o       |
+| Group        | egroup                | Group name                                    | o     | o     | o       | o       |
+| GroupFs      | fgroup                | File system group name                        | o     |       |         |         |
+| GroupReal    | rgroup                | Real group name                               | o     | o     |         | o       |
+| GroupSaved   | sgroup                | Saved group name                              | o     | o     |         | o       |
+| MajFlt       | maj_flt               | Major page fault count                        | o     | o     | o       | o       |
+| MinFlt       | min_flt               | Minor page fault count                        | o     | o     |         | o       |
+| MultiSlot    | -not supported-       | Slot for `--insert` option                    | o     | o     | o       | o       |
+| Nice         | ni                    | Nice value                                    | o     | o     |         | o       |
+| Pgid         | pgid                  | Process group ID                              | o     | o     |         | o       |
+| Pid          | pid                   | Process ID ( or Thread ID sorrunded by `[]` ) | o     | o     | o       | o       |
+| Policy       | policy                | Scheduling policy                             | o     | o     |         |         |
+| Ppid         | ppid                  | Parent process ID                             | o     | o     | o       | o       |
+| Priority     | pri                   | Priority                                      | o     | o     | o       | o       |
+| Processor    | psr                   | Currently assigned processor                  | o     |       |         | o       |
+| ReadBytes    | -not supported-       | Read bytes from storage                       | o     | o     | o       | o       |
+| RtPriority   | rtprio                | Real-time priority                            | o     |       |         |         |
+| SecContext   | label                 | Security context                              | o     |       |         |         |
+| Separator    | -not supported-       | Show `\|` for column separation               | o     | o     | o       | o       |
+| Session      | sid                   | Session ID                                    | o     | o     |         | o       |
+| ShdPnd       | pending               | Pending signal mask for process               | o     |       |         | o       |
+| SigBlk       | blocked               | Blocked signal mask                           | o     |       |         | o       |
+| SigCgt       | caught                | Caught signal mask                            | o     |       |         | o       |
+| SigIgn       | ignored               | Ignored signal mask                           | o     |       |         | o       |
+| SigPnd       | pending               | Pending signal mask for thread                | o     |       |         |         |
+| Slot         | -not supported-       | Slot for `--insert` option                    | o     | o     | o       | o       |
+| Ssb          | -not supported-       | Speculative store bypass status               | o     |       |         |         |
+| StartTime    | start_time            | Starting time                                 | o     | o     | o       | o       |
+| State        | s                     | Process state                                 | o     | o     |         | o       |
+| TcpPort      | -not supported-       | Bound TCP ports                               | o     | o     |         |         |
+| Threads      | nlwp                  | Thread count                                  | o     | o     |         | o       |
+| TreeSlot     | -not supported-       | Slot for tree column                          | o     | o     | o       | o       |
+| Tty          | tty                   | Controlling TTY                               | o     | o     |         | o       |
+| UdpPort      | -not supported-       | Bound UDP ports                               | o     | o     |         |         |
+| Uid          | euid                  | User ID                                       | o     | o     | o       | o       |
+| UidFs        | fuid                  | File system user ID                           | o     |       |         |         |
+| UidLogin     | -not supported-       | Login user ID                                 | o     |       |         |         |
+| UidReal      | ruid                  | Real user ID                                  | o     | o     |         | o       |
+| UidSaved     | suid                  | Saved user ID                                 | o     | o     |         | o       |
+| UsageCpu     | %cpu                  | CPU utilization                               | o     | o     | o       | o       |
+| UsageMem     | %mem                  | Memory utilization                            | o     | o     | o       | o       |
+| User         | euser                 | User name                                     | o     | o     | o       | o       |
+| UserFs       | fuser                 | File system user name                         | o     |       |         |         |
+| UserLogin    | -not supported-       | Login user name                               | o     |       |         |         |
+| UserReal     | ruser                 | Real user name                                | o     | o     |         | o       |
+| UserSaved    | suser                 | Saved user name                               | o     | o     |         | o       |
+| VmData       | -not supported-       | Data size                                     | o     |       |         | o       |
+| VmExe        | trs                   | Text segments size                            | o     |       |         | o       |
+| VmHwm        | -not supported-       | Peak resident set size                        | o     |       | o       | o       |
+| VmLib        | -not supported-       | Library code size                             | o     |       |         |         |
+| VmLock       | -not supported-       | Locked memory size                            | o     |       |         |         |
+| VmPeak       | -not supported-       | Peak virtual memory size                      | o     |       | o       |         |
+| VmPin        | -not supported-       | Pinned memory size                            | o     |       | o       |         |
+| VmPte        | -not supported-       | Page table entries size                       | o     |       |         |         |
+| VmRss        | rss                   | Resident set size                             | o     | o     | o       | o       |
+| VmSize       | vsz                   | Physical page size                            | o     | o     | o       | o       |
+| VmStack      | -not supported-       | Stack size                                    | o     |       |         | o       |
+| VmSwap       | -not supported-       | Swapped-out virtual memory size               | o     |       | o       |         |
+| Wchan        | wchan                 | Process sleeping kernel function              | o     |       |         | o       |
+| WorkDir      | -not supported-       | Current working directory                     | o     |       |         |         |
+| WriteByte    | -not supported-       | Write bytes to storage                        | o     | o     | o       | o       |
 
 #### `style` list
 
@@ -616,12 +634,14 @@ style = "223"     # 223 for both theme
 | Key                   | Value                 | Default          | Description                                                                  |
 | --------------------- | --------------------- | ---------------- | ---------------------------------------------------------------------------- |
 | show_self             | true, false           | false            | Whether the self process ( `procs` ) is shown                                |
+| show_self_parents     | true, false           | false            | Whether the parents which have self as the only child process are shown      |
 | show_thread           | true, false           | false            | Whether the thread information is shown ( Linux only )                       |
 | show_thread_in_tree   | true, false           | true             | Whether the thread information is shown in tree mode ( Linux only )          |
 | show_parent_in_tree   | true, false           | true             | Whether the parent process is shown in tree mode                             |
 | show_children_in_tree | true, false           | true             | Whether the children processes are shown in tree mode                        |
 | show_header           | true, false           | true             | Whether header row is shown                                                  |
 | show_footer           | true, false           | false            | Whether footer row is shown                                                  |
+| show_kthreads         | true, false           | true             | Whether processes which belong to kthread are shown ( Linux only )           |
 | cut_to_terminal       | true, false           | true             | Whether output lines are truncated for output into terminal                  |
 | cut_to_pager          | true, false           | false            | Whether output lines are truncated for output into pager                     |
 | cut_to_pipe           | true, false           | false            | Whether output lines are truncated for output into pipe                      |

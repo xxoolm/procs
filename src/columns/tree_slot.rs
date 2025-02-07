@@ -11,12 +11,11 @@ pub struct TreeSlot {
     width: usize,
 }
 
-#[cfg_attr(tarpaulin, skip)]
 impl TreeSlot {
     pub fn new() -> Self {
         let header = String::new();
         let unit = String::new();
-        TreeSlot {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -26,7 +25,6 @@ impl TreeSlot {
     }
 }
 
-#[cfg_attr(tarpaulin, skip)]
 impl Column for TreeSlot {
     fn add(&mut self, proc: &ProcessInfo) {
         let raw_content = String::new();

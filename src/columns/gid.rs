@@ -19,7 +19,7 @@ impl Gid {
     pub fn new(header: Option<String>, abbr_sid: bool) -> Self {
         let header = header.unwrap_or_else(|| String::from("GID"));
         let unit = String::new();
-        Gid {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -47,7 +47,6 @@ impl Column for Gid {
     column_default!(u32);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 impl Column for Gid {
     fn add(&mut self, proc: &ProcessInfo) {
@@ -62,12 +61,11 @@ impl Column for Gid {
     column_default!(u32);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "windows")]
 impl Column for Gid {
     fn add(&mut self, proc: &ProcessInfo) {
         let mut sid = &proc.groups[0].sid;
-        let mut kind = std::u64::MAX;
+        let mut kind = u64::MAX;
         for g in &proc.groups {
             if g.sid.len() > 3 && g.sid[1] == 5 && g.sid[2] == 32 && kind > g.sid[3] {
                 sid = &g.sid;
@@ -77,6 +75,20 @@ impl Column for Gid {
 
         let fmt_content = format_sid(sid, self.abbr_sid);
         let raw_content = sid[sid.len() - 1] as u32;
+
+        self.fmt_contents.insert(proc.pid, fmt_content);
+        self.raw_contents.insert(proc.pid, raw_content);
+    }
+
+    column_default!(u32);
+}
+
+#[cfg(target_os = "freebsd")]
+impl Column for Gid {
+    fn add(&mut self, proc: &ProcessInfo) {
+        let gid = proc.curr_proc.info.svgid;
+        let fmt_content = format!("{}", gid);
+        let raw_content = gid;
 
         self.fmt_contents.insert(proc.pid, fmt_content);
         self.raw_contents.insert(proc.pid, raw_content);

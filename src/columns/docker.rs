@@ -3,6 +3,7 @@ use crate::{column_default, Column};
 use dockworker::container::ContainerFilters;
 use std::cmp;
 use std::collections::HashMap;
+use tokio::runtime::Runtime;
 
 pub struct Docker {
     header: String,
@@ -25,7 +26,10 @@ impl Docker {
         let mut containers = HashMap::new();
         let mut available = true;
         if let Ok(docker) = dockworker::Docker::connect_with_unix(path) {
-            if let Ok(cont) = docker.list_containers(None, None, None, ContainerFilters::new()) {
+            let rt = Runtime::new().unwrap();
+            if let Ok(cont) =
+                rt.block_on(docker.list_containers(None, None, None, ContainerFilters::new()))
+            {
                 for c in cont {
                     // remove the first letter '/' from container name
                     let name = String::from(&c.Names[0][1..]);
@@ -37,7 +41,7 @@ impl Docker {
         } else {
             available = false;
         }
-        Docker {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -49,7 +53,6 @@ impl Docker {
     }
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 impl Docker {
     pub fn new(header: Option<String>, path: &str) -> Self {
@@ -58,11 +61,14 @@ impl Docker {
         let mut containers = HashMap::new();
         let mut available = true;
         if let Ok(docker) = dockworker::Docker::connect_with_unix(path) {
-            if let Ok(cont) = docker.list_containers(None, None, None, ContainerFilters::new()) {
+            let rt = Runtime::new().unwrap();
+            if let Ok(cont) =
+                rt.block_on(docker.list_containers(None, None, None, ContainerFilters::new()))
+            {
                 for c in cont {
                     // remove the first letter '/' from container name
                     let name = String::from(&c.Names[0][1..]);
-                    if let Ok(processes) = docker.processes(c.Id.as_str()) {
+                    if let Ok(processes) = rt.block_on(docker.processes(c.Id.as_str())) {
                         for p in processes {
                             if let Ok(pid) = p.pid.parse::<i32>() {
                                 containers.insert(pid, name.clone());
@@ -134,7 +140,6 @@ impl Column for Docker {
     column_default!(String);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 impl Column for Docker {
     fn add(&mut self, proc: &ProcessInfo) {

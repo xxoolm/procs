@@ -1,6 +1,7 @@
 mod column;
 mod columns;
 mod config;
+mod opt;
 mod process;
 mod style;
 mod term_info;
@@ -11,12 +12,12 @@ mod watcher;
 use crate::column::Column;
 use crate::columns::*;
 use crate::config::*;
-use crate::util::{adjust, get_theme, lap, ArgColorMode, ArgPagerMode, ArgThemeMode};
+use crate::opt::*;
+use crate::util::{adjust, get_theme, lap};
 use crate::view::View;
 use crate::watcher::Watcher;
-use anyhow::{anyhow, Context, Error};
-use clap::{ArgEnum, IntoApp, Parser};
-use clap_complete::Shell;
+use anyhow::{Context, Error};
+use clap::{CommandFactory, Parser};
 use console::Term;
 use std::cmp;
 use std::collections::HashMap;
@@ -27,172 +28,9 @@ use std::time::Instant;
 use unicode_width::UnicodeWidthStr;
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Opt
-// ---------------------------------------------------------------------------------------------------------------------
-
-#[derive(Clone, Debug, ArgEnum)]
-pub enum BuiltinConfig {
-    Default,
-    Large,
-}
-
-#[derive(Debug, Parser)]
-#[clap(long_version(option_env!("LONG_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))))]
-#[clap(setting(clap::AppSettings::DeriveDisplayOrder))]
-/// A modern replacement for ps
-///
-/// please see https://github.com/dalance/procs#configuration to configure columns
-pub struct Opt {
-    /// Keywords for search
-    #[clap(action, name = "KEYWORD")]
-    pub keyword: Vec<String>,
-
-    /// AND  logic for multi-keyword
-    #[clap(
-        action,
-        short = 'a',
-        long = "and",
-        conflicts_with_all(&["or", "nand", "nor"])
-    )]
-    pub and: bool,
-
-    /// OR   logic for multi-keyword
-    #[clap(
-        action,
-        short = 'o',
-        long = "or",
-        conflicts_with_all(&["and", "nand", "nor"])
-    )]
-    pub or: bool,
-
-    /// NAND logic for multi-keyword
-    #[clap(
-        action,
-        short = 'd',
-        long = "nand",
-        conflicts_with_all(&["and", "or", "nor"])
-    )]
-    pub nand: bool,
-
-    /// NOR  logic for multi-keyword
-    #[clap(
-        action,
-        short = 'r',
-        long = "nor",
-        conflicts_with_all(&["and", "or", "nand"])
-    )]
-    pub nor: bool,
-
-    /// Show list of kind
-    #[clap(action, short = 'l', long = "list")]
-    pub list: bool,
-
-    /// Show thread
-    #[clap(action, long = "thread")]
-    pub thread: bool,
-
-    /// Tree view
-    #[clap(action, short = 't', long = "tree")]
-    pub tree: bool,
-
-    /// Watch mode with default interval (1s)
-    #[clap(action, short = 'w', long = "watch")]
-    pub watch: bool,
-
-    /// Watch mode with custom interval
-    #[clap(action, short = 'W', long = "watch-interval", value_name = "second")]
-    pub watch_interval: Option<f64>,
-
-    #[clap(skip)]
-    pub watch_mode: bool,
-
-    /// Insert column to slot
-    #[clap(
-        action,
-        value_name = "kind",
-        short = 'i',
-        long = "insert",
-        number_of_values(1)
-    )]
-    pub insert: Vec<String>,
-
-    /// Specified column only
-    #[clap(action, value_name = "kind", long = "only")]
-    pub only: Option<String>,
-
-    /// Sort column by ascending
-    #[clap(
-        action,
-        value_name = "kind",
-        long = "sorta",
-        conflicts_with_all(&["sortd", "tree"])
-    )]
-    pub sorta: Option<String>,
-
-    /// Sort column by descending
-    #[clap(
-        action,
-        value_name = "kind",
-        long = "sortd",
-        conflicts_with_all(&["sorta", "tree"])
-    )]
-    pub sortd: Option<String>,
-
-    /// Color mode
-    #[clap(action, short = 'c', long = "color")]
-    pub color: Option<ArgColorMode>,
-
-    /// Theme mode
-    #[clap(action, long = "theme")]
-    pub theme: Option<ArgThemeMode>,
-
-    /// Pager mode
-    #[clap(action, short = 'p', long = "pager")]
-    pub pager: Option<ArgPagerMode>,
-
-    /// Interval to calculate throughput
-    #[clap(
-        action,
-        long = "interval",
-        default_value = "100",
-        value_name = "millisec"
-    )]
-    pub interval: u64,
-
-    /// Use built-in configuration
-    #[clap(action, long = "use-config", value_name = "name")]
-    pub use_config: Option<BuiltinConfig>,
-
-    /// Load configuration from file
-    #[clap(action, long = "load-config", value_name = "path")]
-    pub load_config: Option<PathBuf>,
-
-    /// Generate configuration sample file
-    #[clap(action, long = "gen-config")]
-    pub gen_config: bool,
-
-    /// Generate shell completion file
-    #[clap(action, long = "gen-completion", value_name = "shell")]
-    pub gen_completion: Option<Shell>,
-
-    /// Generate shell completion file and write to stdout
-    #[clap(action, long = "gen-completion-out", value_name = "shell")]
-    pub gen_completion_out: Option<Shell>,
-
-    /// Suppress header
-    #[clap(action, long = "no-header")]
-    pub no_header: bool,
-
-    /// Show debug message
-    #[clap(action, long = "debug", hide = true)]
-    pub debug: bool,
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
 // Functions
 // ---------------------------------------------------------------------------------------------------------------------
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_config(opt: &Opt) -> Result<Config, Error> {
     let dot_cfg_path = directories::BaseDirs::new()
         .map(|base| base.home_dir().join(".procs.toml"))
@@ -208,12 +46,15 @@ fn get_config(opt: &Opt) -> Result<Config, Error> {
                 .join("config.toml")
         })
         .filter(|path| path.exists());
+    let etc_path = PathBuf::from("/etc/procs/procs.toml");
+    let etc_cfg_path = etc_path.exists().then_some(etc_path);
     let cfg_path = opt
         .load_config
         .clone()
         .or(dot_cfg_path)
         .or(app_cfg_path)
-        .or(xdg_cfg_path);
+        .or(xdg_cfg_path)
+        .or(etc_cfg_path);
 
     let config: Config = if let Some(path) = cfg_path {
         let mut f = fs::File::open(&path).context(format!("failed to open file ({path:?})"))?;
@@ -252,7 +93,6 @@ fn check_old_config(s: &str, config: Result<Config, toml::de::Error>) -> Result<
 // Main
 // ---------------------------------------------------------------------------------------------------------------------
 
-#[cfg_attr(tarpaulin, skip)]
 fn main() {
     let err = Term::stderr();
 
@@ -272,7 +112,6 @@ fn main() {
     }
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn run() -> Result<(), Error> {
     let mut opt: Opt = Parser::parse();
     opt.watch_mode = opt.watch || opt.watch_interval.is_some();
@@ -280,20 +119,10 @@ fn run() -> Result<(), Error> {
     if opt.gen_config {
         run_gen_config()
     } else if opt.list {
-        run_list()
-    } else if let Some(shell) = opt.gen_completion {
-        //Opt::clap().gen_completions("procs", shell, "./");
-        clap_complete::generate_to(shell, &mut Opt::command(), "procs", "./")?;
-        let path = match shell {
-            Shell::Bash => "./procs.bash",
-            Shell::Elvish => "./procs.elv",
-            Shell::Fish => "./procs.fish",
-            Shell::PowerShell => "./_procs.ps1",
-            Shell::Zsh => "./_procs",
-            x => return Err(anyhow!("unknown shell type: {}", x)),
-        };
-        println!("completion file is generated: {path}");
+        run_list();
         Ok(())
+    } else if let Some(shell) = opt.gen_completion {
+        gen_completion(shell, "./")
     } else if let Some(shell) = opt.gen_completion_out {
         //Opt::clap().gen_completions_to("procs", shell, &mut stdout());
         clap_complete::generate(shell, &mut Opt::command(), "procs", &mut stdout());
@@ -319,7 +148,7 @@ fn run_gen_config() -> Result<(), Error> {
     Ok(())
 }
 
-fn run_list() -> Result<(), Error> {
+fn run_list() {
     let mut width = 0;
     let mut list = Vec::new();
     let mut desc = HashMap::new();
@@ -329,8 +158,6 @@ fn run_list() -> Result<(), Error> {
         width = cmp::max(width, UnicodeWidthStr::width(*v));
     }
 
-    list.sort();
-
     println!("Column kind list:");
     for l in list {
         println!(
@@ -339,11 +166,8 @@ fn run_list() -> Result<(), Error> {
             desc[l]
         );
     }
-
-    Ok(())
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn run_watch(opt: &mut Opt, config: &Config, interval: u64) -> Result<(), Error> {
     Watcher::start(opt, config, interval)
 }
@@ -359,7 +183,7 @@ fn run_default(opt: &mut Opt, config: &Config) -> Result<(), Error> {
         lap(&mut time, "Info: View::new");
     }
 
-    view.filter(opt, config);
+    view.filter(opt, config, 1);
 
     if opt.debug {
         lap(&mut time, "Info: view.filter");
@@ -443,12 +267,6 @@ mod tests {
     #[test]
     fn test_run_gen_config() {
         let ret = run_gen_config();
-        assert!(ret.is_ok());
-    }
-
-    #[test]
-    fn test_run_list() {
-        let ret = run_list();
         assert!(ret.is_ok());
     }
 

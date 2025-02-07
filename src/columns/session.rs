@@ -17,7 +17,7 @@ impl Session {
     pub fn new(header: Option<String>) -> Self {
         let header = header.unwrap_or_else(|| String::from("Session"));
         let unit = String::new();
-        Session {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -50,6 +50,19 @@ impl Column for Session {
             .map(|x| x.as_raw())
             .unwrap_or(0);
         let raw_content = sid;
+        let fmt_content = format!("{}", raw_content);
+
+        self.fmt_contents.insert(proc.pid, fmt_content);
+        self.raw_contents.insert(proc.pid, raw_content);
+    }
+
+    column_default!(i32);
+}
+
+#[cfg(target_os = "freebsd")]
+impl Column for Session {
+    fn add(&mut self, proc: &ProcessInfo) {
+        let raw_content = proc.curr_proc.info.sid;
         let fmt_content = format!("{}", raw_content);
 
         self.fmt_contents.insert(proc.pid, fmt_content);

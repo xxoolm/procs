@@ -15,7 +15,7 @@ impl Priority {
     pub fn new(header: Option<String>) -> Self {
         let header = header.unwrap_or_else(|| String::from("Priority"));
         let unit = String::new();
-        Priority {
+        Self {
             fmt_contents: HashMap::new(),
             raw_contents: HashMap::new(),
             width: 0,
@@ -38,7 +38,6 @@ impl Column for Priority {
     column_default!(i64);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 impl Column for Priority {
     fn add(&mut self, proc: &ProcessInfo) {
@@ -52,7 +51,6 @@ impl Column for Priority {
     column_default!(i64);
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "windows")]
 impl Column for Priority {
     fn add(&mut self, proc: &ProcessInfo) {
@@ -66,6 +64,19 @@ impl Column for Priority {
             0x8000 => String::from("AboveNormal"),
             _ => String::from("Unknown"),
         };
+
+        self.fmt_contents.insert(proc.pid, fmt_content);
+        self.raw_contents.insert(proc.pid, raw_content);
+    }
+
+    column_default!(i64);
+}
+
+#[cfg(target_os = "freebsd")]
+impl Column for Priority {
+    fn add(&mut self, proc: &ProcessInfo) {
+        let raw_content = proc.curr_proc.info.pri.level as i64 - 100;
+        let fmt_content = format!("{raw_content}");
 
         self.fmt_contents.insert(proc.pid, fmt_content);
         self.raw_contents.insert(proc.pid, raw_content);

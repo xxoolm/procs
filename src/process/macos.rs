@@ -3,9 +3,10 @@ use libproc::libproc::bsd_info::BSDInfo;
 use libproc::libproc::file_info::{pidfdinfo, ListFDs, ProcFDType};
 use libproc::libproc::net_info::{InSockInfo, SocketFDInfo, SocketInfoKind, TcpSockInfo};
 use libproc::libproc::pid_rusage::{pidrusage, RUsageInfoV2};
-use libproc::libproc::proc_pid::{listpidinfo, listpids, pidinfo, ListThreads, ProcType};
+use libproc::libproc::proc_pid::{listpidinfo, pidinfo, ListThreads};
 use libproc::libproc::task_info::{TaskAllInfo, TaskInfo};
 use libproc::libproc::thread_info::ThreadInfo;
+use libproc::processes::{pids_by_type, ProcFilter};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -25,13 +26,17 @@ pub struct ProcessInfo {
     pub interval: Duration,
 }
 
-#[cfg_attr(tarpaulin, skip)]
-pub fn collect_proc(interval: Duration, _with_thread: bool) -> Vec<ProcessInfo> {
+pub fn collect_proc(
+    interval: Duration,
+    _with_thread: bool,
+    _show_kthreads: bool,
+    _procfs_path: &Option<PathBuf>,
+) -> Vec<ProcessInfo> {
     let mut base_procs = Vec::new();
     let mut ret = Vec::new();
     let arg_max = get_arg_max();
 
-    if let Ok(procs) = listpids(ProcType::ProcAllPIDS) {
+    if let Ok(procs) = pids_by_type(ProcFilter::All) {
         for p in procs {
             if let Ok(task) = pidinfo::<TaskAllInfo>(p as i32, 0) {
                 let res = pidrusage::<RUsageInfoV2>(p as i32).ok();
@@ -114,7 +119,6 @@ pub fn collect_proc(interval: Duration, _with_thread: bool) -> Vec<ProcessInfo> 
     ret
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_arg_max() -> size_t {
     let mut mib: [c_int; 2] = [libc::CTL_KERN, libc::KERN_ARGMAX];
     let mut arg_max = 0i32;
@@ -134,14 +138,17 @@ fn get_arg_max() -> size_t {
 }
 
 pub struct PathInfo {
+    #[allow(dead_code)]
     pub name: String,
+    #[allow(dead_code)]
     pub exe: PathBuf,
+    #[allow(dead_code)]
     pub root: PathBuf,
     pub cmd: Vec<String>,
+    #[allow(dead_code)]
     pub env: Vec<String>,
 }
 
-#[cfg_attr(tarpaulin, skip)]
 unsafe fn get_unchecked_str(cp: *mut u8, start: *mut u8) -> String {
     let len = cp as usize - start as usize;
     let part = Vec::from_raw_parts(start, len, len);
@@ -150,7 +157,6 @@ unsafe fn get_unchecked_str(cp: *mut u8, start: *mut u8) -> String {
     tmp
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn get_path_info(pid: i32, mut size: size_t) -> Option<PathInfo> {
     let mut proc_args = Vec::with_capacity(size as usize);
     let ptr: *mut u8 = proc_args.as_mut_slice().as_mut_ptr();
@@ -245,7 +251,6 @@ fn get_path_info(pid: i32, mut size: size_t) -> Option<PathInfo> {
     }
 }
 
-#[cfg_attr(tarpaulin, skip)]
 fn clone_task_all_info(src: &TaskAllInfo) -> TaskAllInfo {
     let pbsd = BSDInfo {
         pbi_flags: src.pbsd.pbi_flags,

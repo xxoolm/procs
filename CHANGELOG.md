@@ -1,6 +1,54 @@
 # Change Log
 
-## [Unreleased](https://github.com/dalance/procs/compare/v0.13.4...Unreleased) - ReleaseDate
+## [Unreleased](https://github.com/dalance/procs/compare/v0.14.9...Unreleased) - ReleaseDate
+
+## [v0.14.9](https://github.com/dalance/procs/compare/v0.14.8...v0.14.9) - 2025-01-17
+
+* [Fixed] Build failure on FreeBSD
+
+## [v0.14.8](https://github.com/dalance/procs/compare/v0.14.7...v0.14.8) - 2024-10-23
+
+* [Fixed] Build breaks on FreeBSD [#703](https://github.com/dalance/procs/issues/703)
+
+## [v0.14.7](https://github.com/dalance/procs/compare/v0.14.6...v0.14.7) - 2024-10-22
+
+* [Changed] Header line wrapping [#695](https://github.com/dalance/procs/pull/695)
+* [Fixed] First key press is ignored [#443](https://github.com/dalance/procs/issues/443)
+
+## [v0.14.6](https://github.com/dalance/procs/compare/v0.14.5...v0.14.6) - 2024-07-30
+
+* [Changed] MSRV to Rust 1.74
+* [Added] aarch64-apple-darwin build release
+
+## [v0.14.5](https://github.com/dalance/procs/compare/v0.14.4...v0.14.5) - 2024-03-07
+
+* [Added] Add show_self_parents option [#607](https://github.com/dalance/procs/pull/607)
+* [Changed] MSRV to Rust 1.70
+
+## [v0.14.4](https://github.com/dalance/procs/compare/v0.14.3...v0.14.4) - 2023-11-24
+
+* [Fixed] Build breaks on FreeBSD/arm64,i386
+
+## [v0.14.3](https://github.com/dalance/procs/compare/v0.14.2...v0.14.3) - 2023-10-20
+
+* [Changed] MSRV to Rust 1.67
+* [Added] Some columns on FreeBSD
+
+## [v0.14.2](https://github.com/dalance/procs/compare/v0.14.1...v0.14.2) - 2023-10-18
+
+* [Added] BSD support [#313](https://github.com/dalance/procs/issues/313)
+* [Fixed] wrong time handling on Windows
+* [Added] User/group cache support
+* [Added] Cgroup/Ccgroup column [#529](https://github.com/dalance/procs/issues/529)
+
+## [v0.14.1](https://github.com/dalance/procs/compare/v0.14.0...v0.14.1) - 2023-10-06
+
+* [Added] Also look for a config file in /etc/procs/procs.toml [#533](https://github.com/dalance/procs/pull/533)
+* [Added] less compatible keybinding of built-in pager
+* [Added] `show_kthreads` config [#446](https://github.com/dalance/procs/pull/446)
+* [Fixed] procs -i Pid displays Parent PID, not PID, sometimes [#457](https://github.com/dalance/procs/issues/457)
+
+## [v0.14.0](https://github.com/dalance/procs/compare/v0.13.4...v0.14.0) - 2023-03-07
 
 * [Changed] `--config` option to `--gen-config`
 * [Changed] `--completion` option to `--gen-completion`
